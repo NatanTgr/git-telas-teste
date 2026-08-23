@@ -5,12 +5,14 @@ import React, {
   useState,
   ReactNode,
 } from "react";
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+type TipoTema = "claro" | "escuro" | "forte";
+
 type ThemeContextType = {
-  temaEscuro: boolean;
+  tipoTema: TipoTema;
   alternarTema: () => void;
+  selecionarTema: (tema: TipoTema) => void;
   carregando: boolean;
   tema: any;
 };
@@ -24,30 +26,42 @@ export function ThemeProvider({
 }: {
   children: ReactNode;
 }) {
-  const [temaEscuro, setTemaEscuro] = useState(false);
+  const [tipoTema, setTipoTema] = useState<TipoTema>("claro");
   const [carregando, setCarregando] = useState(true);
 
-  const tema = temaEscuro
-  ? {
-      background: "#897272",
-      card: "#2A2A2A",
-      text: "#FFFDD0",
-      secondaryText: "#CCCCCC",
-      input: "#333333",
-      border: "#444444",
-      primary: "#94C0DF",
-      modal: "#524c4c"
-    }
-  : {
-      background: "#FFFDD0",
-      card: "#FFFFFF",
-      text: "#000000",
-      secondaryText: "#666666",
-      input: "#FFFFFF",
-      border: "#DDDDDD",
-      primary: "#94C0DF",
-      modal: "#fff"
-    };
+  const tema =
+    tipoTema === "escuro"
+      ? {
+          background: "#897272",
+          card: "#2A2A2A",
+          text: "#FFFDD0",
+          secondaryText: "#CCCCCC",
+          input: "#333333",
+          border: "#444444",
+          primary: "#94C0DF",
+          modal: "#524c4c",
+        }
+      : tipoTema === "forte"
+        ? {
+            background: "#FFF200",
+            card: "#FF6B00",
+            text: "#000000",
+            secondaryText: "#222222",
+            input: "#FFFFFF",
+            border: "#000000",
+            primary: "#0057FF",
+            modal: "#ff6200",
+          }
+        : {
+            background: "#FFFDD0",
+            card: "#FFFFFF",
+            text: "#000000",
+            secondaryText: "#666666",
+            input: "#FFFFFF",
+            border: "#DDDDDD",
+            primary: "#94C0DF",
+            modal: "#fff",
+          };
 
   useEffect(() => {
     carregarTema();
@@ -58,7 +72,16 @@ export function ThemeProvider({
       const temaSalvo = await AsyncStorage.getItem("tema");
 
       if (temaSalvo !== null) {
-        setTemaEscuro(JSON.parse(temaSalvo));
+        // Compatibilidade com o sistema antigo:
+        // false = claro
+        // true = escuro
+        if (temaSalvo === "true") {
+          setTipoTema("escuro");
+        } else if (temaSalvo === "false") {
+          setTipoTema("claro");
+        } else {
+          setTipoTema(JSON.parse(temaSalvo));
+        }
       }
     } catch (error) {
       console.log(error);
@@ -67,11 +90,9 @@ export function ThemeProvider({
     }
   }
 
-  async function alternarTema() {
+  async function selecionarTema(novoTema: TipoTema) {
     try {
-      const novoTema = !temaEscuro;
-
-      setTemaEscuro(novoTema);
+      setTipoTema(novoTema);
 
       await AsyncStorage.setItem(
         "tema",
@@ -82,11 +103,26 @@ export function ThemeProvider({
     }
   }
 
+  async function alternarTema() {
+    let novoTema: TipoTema;
+
+    if (tipoTema === "claro") {
+      novoTema = "escuro";
+    } else if (tipoTema === "escuro") {
+      novoTema = "forte";
+    } else {
+      novoTema = "claro";
+    }
+
+    await selecionarTema(novoTema);
+  }
+
   return (
     <ThemeContext.Provider
       value={{
-        temaEscuro,
+        tipoTema,
         alternarTema,
+        selecionarTema,
         carregando,
         tema,
       }}

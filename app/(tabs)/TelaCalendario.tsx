@@ -1,10 +1,12 @@
-import { StyleSheet, Text, View, ScrollView, TextInput, Button, TouchableOpacity, Modal, Pressable } from 'react-native';
+import { Text, View, ScrollView, TextInput, Alert, TouchableOpacity, Modal, } from 'react-native';
 import { Calendar, DateData, LocaleConfig } from "react-native-calendars";
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 //import { router, Link } from 'expo-router';
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from "../../context/ThemeContext";
+import { useFocusEffect } from '@react-navigation/native';
+import Estilos from "../../Estilos/TelaCalendarioEstilo";
 
 import { ptBR } from "../../Utils/configCal"
 
@@ -23,16 +25,32 @@ export default function TelaCalendario() {
   const [descricao, setDescricao] = useState('');
 
   const adicionarTarefa = async (tipo: string) => {
+  // Verifica se todos os campos foram preenchidos
+  if (
+    !titulo.trim() ||
+    !data.trim() ||
+    !disciplina.trim() ||
+    !professor.trim() ||
+    !tipo.trim() ||
+    !plataforma.trim() ||
+    !descricao.trim()
+  ) {
+    Alert.alert(
+      "Campos obrigatórios",
+      "Preencha todos os campos para adicionar o evento."
+    );
+    return;
+  }
 
   const novaTarefa = {
     id: Date.now().toString(),
-    title: titulo,
+    title: titulo.trim(),
     data,
-    disciplina,
-    professor,
+    disciplina: disciplina.trim(),
+    professor: professor.trim(),
     tipo,
-    plataforma,
-    descricao,
+    plataforma: plataforma.trim(),
+    descricao: descricao.trim(),
     completed: false,
   };
 
@@ -50,6 +68,15 @@ export default function TelaCalendario() {
   );
 
   await carregarEventosCalendario();
+
+  setTitulo("");
+  setDisciplina("");
+  setProfessor("");
+  setPlataforma("");
+  setDescricao("");
+  setTipoSelecionado("");
+
+  return true;
   };
 
   //selecionar dia 
@@ -67,15 +94,74 @@ export default function TelaCalendario() {
   //escolher tipo de tarefa
   const [tipoSelecionado, setTipoSelecionado] = useState('');
 
-  // Adicionar uma nova tarefa
-  
+  //modal escolha descrição ou adicionar
+  const [modalEscolha, setModalEscolha] = useState(false);
+
+  //modal Lista de Tarefas para escolha
+  const [modalListaTarefas, setModalListaTarefas] = useState(false);
+
+  //modal detalhes da tarefa
+  const [modalDetalhes, setModalDetalhes] = useState(false);
+
+  //tarefas do dia selecionado
+  const [tarefasDoDia, setTarefasDoDia] = useState<any[]>([]);
+
+  //selecionar tarefa
+  const [tarefaSelecionada, setTarefaSelecionada] = useState<any>(null);
 
    // CLICA NO DIA
-  function handleDayPress(day: DateData) {
+  async function handleDayPress(day: DateData) {
     setSelectedDay(day.dateString);
     setData(day.dateString);
-    setModalVisible(true);
+    
+    try {
+      const json = await AsyncStorage.getItem("tarefas");
+      const tarefas = json ? JSON.parse(json) : [];
+
+      const tarefasDoDiaSelecionado = tarefas.filter(
+        (tarefa: any) => tarefa.data === day.dateString
+      );
+
+      setTarefasDoDia(tarefasDoDiaSelecionado);
+
+      if (tarefasDoDiaSelecionado.length > 0) {
+        // Se já existem eventos nessa data,
+        // mostra o modal com as duas opções
+        setModalEscolha(true);
+      } else {
+        // Se não existe evento, abre diretamente
+        // o modal de adicionar evento
+        setModalVisible(true);
+      }
+    } catch (error) {
+      console.log(error);
+    }
   }
+
+  //remover Tarefa
+  const removerTarefa = async (id: string) => {
+    try {
+      const json = await AsyncStorage.getItem("tarefas");
+
+      if (!json) {
+        return;
+      }
+
+      const tarefas = JSON.parse(json);
+
+      const novasTarefas = tarefas.filter((tarefa: any) => tarefa.id !== id);
+
+      await AsyncStorage.setItem("tarefas", JSON.stringify(novasTarefas));
+
+      await carregarEventosCalendario();
+
+      setTarefasDoDia((tarefasAtuais) =>
+        tarefasAtuais.filter((tarefa: any) => tarefa.id !== id),
+      );
+    } catch (error) {
+      console.log("Erro ao remover tarefa:", error);
+    }
+  };
 
   const carregarEventosCalendario = async () => {
     try {
@@ -87,15 +173,36 @@ export default function TelaCalendario() {
       }
 
       const tarefas = JSON.parse(json);
-
       const datasMarcadas: any = {};
 
+      // Data de hoje no formato AAAA-MM-DD
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+
+      const ano = hoje.getFullYear();
+      const mes = String(hoje.getMonth() + 1).padStart(2, "0");
+      const dia = String(hoje.getDate()).padStart(2, "0");
+
+      const dataHoje = `${ano}-${mes}-${dia}`;
+
       tarefas.forEach((tarefa: any) => {
+        if (!tarefa.data) {
+          return;
+        }
 
-        let cor = "#88C688";
+        let cor;
 
-        if (tarefa.tipo === "Reunião") {
-          cor = "#94C0DF";
+        // Se a tarefa estiver atrasada
+        if (tarefa.data < dataHoje && !tarefa.completed) {
+          cor = "#FFA64E"; // laranja - atrasada
+        }
+        // Se for tarefa normal
+        else if (tarefa.tipo === "Tarefa") {
+          cor = "#88C688"; // verde
+        }
+        // Se for reunião normal
+        else if (tarefa.tipo === "Reunião") {
+          cor = "#94C0DF"; // azul
         }
 
         const data = tarefa.data;
@@ -113,132 +220,137 @@ export default function TelaCalendario() {
       });
 
       setMarkedDates(datasMarcadas);
-
     } catch (error) {
-      console.log(error);
+      console.log("Erro ao carregar eventos do calendário:", error);
     }
   };
 
+  //formatar Data
   const formatarData = (data: string) => {
     const [ano, mes, dia] = data.split("-");
     return `${dia}/${mes}/${ano}`;
   };
 
-  useEffect(() => {
-    carregarEventosCalendario();
-  }, []);
+
+
+  //salvar data da tarefa na tela Tarefa e fazer mostrar um DOT no calendário
+  useFocusEffect(
+    useCallback(() => {
+      carregarEventosCalendario();
+    }, [])
+  );
 
   return (
-    
-    
-    <View style={[
-      styles.container,
-      {
-        backgroundColor: tema.background,
-      },
-    ]}>
-
-      <Text style={[styles.titulo,
-      {
-        color: tema.text
-      }  
-      ]}>Calendário</Text>
-
-        <View style={styles.legendaContainer}>
-
-          <View style={styles.legendaItem}>
-            <View
-              style={[
-                styles.quadrado,
-                  { backgroundColor: "#FFA64E" }
-              ]}
-            />
-
-          <Text style={[styles.legenda,
+    <View
+      style={[
+        Estilos.container,
+        {
+          backgroundColor: tema.background,
+        },
+      ]}
+    >
+      <Text
+        style={[
+          Estilos.titulo,
           {
-            color: tema.text
-          }
-          ]}>
-            Atrasada</Text>
-          </View>
+            color: tema.text,
+          },
+        ]}
+      >
+        Calendário
+      </Text>
 
-          <View style={styles.legendaItem}>
-            <View
-              style={[
-                styles.quadrado,
-                { backgroundColor: "#88C688"  }
-              ]}
-            />
+      <View style={Estilos.legendaContainer}>
+        <View style={Estilos.legendaItem}>
+          <View style={[Estilos.quadrado, { backgroundColor: "#FFA64E" }]} />
 
-          <Text style={[styles.legenda,
-          {
-            color: tema.text
-          }
-          ]}>
-            Tarefa</Text>    
-          </View>
-
-          <View style={styles.legendaItem}>
-            <View
-              style={[
-                styles.quadrado,
-                { backgroundColor: "#94C0DF"}
-              ]}
-            />
-
-          <Text style={[styles.legenda,
-          {
-            color: tema.text
-          }
-          ]}>
-            Reunião</Text>
-          </View>
-
+          <Text
+            style={[
+              Estilos.legenda,
+              {
+                color: tema.text,
+              },
+            ]}
+          >
+            Atrasada
+          </Text>
         </View>
 
-      <View style={[styles.calendarContainer,
-      {
-        backgroundColor: tema.card
-      }
-      ]}>  
-        <Calendar
-          style={styles.calendar} 
-          renderArrow={( direction: "right" | "left") => (
-          <Feather size={24} color="#000000"
-          name={`chevron-${direction}`} />
-          )}
+        <View style={Estilos.legendaItem}>
+          <View style={[Estilos.quadrado, { backgroundColor: "#88C688" }]} />
 
-          headerStyle={{ 
+          <Text
+            style={[
+              Estilos.legenda,
+              {
+                color: tema.text,
+              },
+            ]}
+          >
+            Tarefa
+          </Text>
+        </View>
+
+        <View style={Estilos.legendaItem}>
+          <View style={[Estilos.quadrado, { backgroundColor: "#94C0DF" }]} />
+
+          <Text
+            style={[
+              Estilos.legenda,
+              {
+                color: tema.text,
+              },
+            ]}
+          >
+            Reunião
+          </Text>
+        </View>
+      </View>
+
+      <View
+        style={[
+          Estilos.calendarContainer,
+          {
+            backgroundColor: tema.card,
+          },
+        ]}
+      >
+        <Calendar
+          style={Estilos.calendar}
+          renderArrow={(direction: "right" | "left") => (
+            <Feather size={24} color="#000000" name={`chevron-${direction}`} />
+          )}
+          headerStyle={{
             paddingBottom: 10,
             marginBottom: 10,
           }}
-          theme={{
-            backgroundColor: "#fff",
-            todayTextColor: "#fff",
-            todayBackgroundColor: "#836F68",
-            monthTextColor: "#000000",
-            arrowStyle: {
-              margin: 0,
-              padding: 0, 
-            },
-            
-            ['stylesheet.day.basic']: {
-              base: {
-                width: 40,
-                height: 40,
+          theme={
+            {
+              backgroundColor: "#fff",
+              todayTextColor: "#fff",
+              todayBackgroundColor: "#836F68",
+              monthTextColor: "#000000",
+              arrowStyle: {
+                margin: 0,
+                padding: 0,
+              },
 
-                alignItems: 'center',
-                justifyContent: 'center',
+              ["Estilosheet.day.basic"]: {
+                base: {
+                  width: 40,
+                  height: 40,
 
-                borderWidth: 1,
-                borderColor: "#cdcdcd85",
+                  alignItems: "center",
+                  justifyContent: "center",
 
-                borderRadius: 12,
-                
-              }
-            }
-            
-          } as any}
+                  borderWidth: 1,
+                  borderColor: "#cdcdcd85",
+
+                  borderRadius: 12,
+                },
+              },
+            } as any
+          }
           //minDate={new Date().toDateString()}
           hideExtraDays={true}
           onDayPress={handleDayPress}
@@ -248,345 +360,318 @@ export default function TelaCalendario() {
       </View>
 
       <Modal
-      visible={modalVisible}
-      transparent
-      animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
+        visible={modalEscolha}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalEscolha(false)}
       >
-        <View style={styles.modalOverlay}>
-        
-          
-                  <View style={[styles.cardModal,
-                  {backgroundColor: tema.modal}  
-                  ]}>
-        
-                    <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    >
-                    <Text style={[styles.tituloModal,
-                    {color: tema.text}  
-                    ]}>
-                      Novo Evento
-                    </Text>
-                    
-                    <Text style={[styles.tipoTexto,
-                    {color: tema.text}
-                    ]}>Tipo</Text>
-        
-                    <View style={styles.opcoesRow}>
-                    {/* Opção Tarefa */}
-                    <TouchableOpacity
-                      style={styles.opcaoContainer}
-                      onPress={() => setTipoSelecionado('Tarefa')}
-                    >
-                      <View style={styles.radioExterno}>
-                        {tipoSelecionado === 'Tarefa' && (
-                          <View style={styles.radioInterno} />
-                        )}
-                      </View>
-        
-                      <Text style={[styles.textoOpcao,
-                      {color: tema.text}
-                      ]}>
-                        Tarefa
-                      </Text>
-                    </TouchableOpacity>
-        
-                    {/* Opção Reunião */}
-                    <TouchableOpacity
-                      style={styles.opcaoContainer}
-                      onPress={() => setTipoSelecionado('Reunião')}
-                    >
-                      <View style={styles.radioExterno}>
-                        {tipoSelecionado === 'Reunião' && (
-                          <View style={styles.radioInterno} />
-                        )}
-                      </View>
-        
-                      <Text style={[styles.textoOpcao,
-                      {color: tema.text}
-                      ]}>
-                        Reunião
-                      </Text>
-                    </TouchableOpacity>
-                    </View>
-        
-                    {/*Colocar Textos*/}
-                    <View style={styles.infoTarefa}>
-                      <Text style={[styles.titulosInfoTarefa,
-                        {color: tema.text}
-                      ]}>Título</Text>
-                      <TextInput 
-                        style={styles.textosInfo}
-                        placeholder= "Nome do evento"
-                        value={titulo}
-                        onChangeText={setTitulo}              
-                      >
-                      </TextInput>
-                      
-                      <Text style={[styles.titulosInfoTarefa,
-                      {color: tema.text}  
-                      ]}>Data Selecionada
-                      </Text>
-                      <TextInput 
-                        style={styles.textosInfo}
-                        value={formatarData(data)}
-                        editable={false}
-                      >
-                      </TextInput>
-        
-                      <Text style={[styles.titulosInfoTarefa,
-                      {color: tema.text}
-                      ]}>Disciplina</Text>
-                      <TextInput 
-                        style={styles.textosInfo}
-                        placeholder= "Ex: Matemática"
-                        value={disciplina}
-                        onChangeText={setDisciplina}              
-                      >
-                      </TextInput>
-        
-                      <Text style={[styles.titulosInfoTarefa,
-                      {color: tema.text}
-                      ]}>Professor</Text>
-                      <TextInput 
-                        style={styles.textosInfo}
-                        placeholder= "Nome do professor"
-                        value={professor}
-                        onChangeText={setProfessor}              
-                      >
-                      </TextInput>
-        
-                      <Text style={[styles.titulosInfoTarefa,
-                      {color: tema.text}  
-                      ]}>Plataforma de Realização</Text>
-                      <TextInput 
-                        style={styles.textosInfo}
-                        placeholder= "Ex: Google Classroom, Moodle"
-                        value={plataforma}
-                        onChangeText={setPlataforma}              
-                      >
-                      </TextInput>
-        
-                      <Text style={[styles.titulosInfoTarefa,
-                      {color: tema.text}  
-                      ]}>Descrição</Text>
-                      <TextInput 
-                        style={styles.textosInfo}
-                        placeholder= "Detalhes do evento"
-                        value={descricao}
-                        onChangeText={setDescricao}              
-                      >
-                      </TextInput>
-                    </View>
-        
-                    {/* Botões */}
-                    <View style={styles.botoesModal}>
-                
-                      <TouchableOpacity
-                        style={styles.botaoCancelar}
-                        onPress={() => {
-                        setModalVisible(false);
-                        setTipoSelecionado('');
-                        }}
-                      >
-                        <Text style={{ color: '#fff' }}>
-                          Cancelar
-                        </Text>
-                      </TouchableOpacity>
-        
-                      <TouchableOpacity
-                        style={styles.botaoConfirmar}
-                        onPress={async () => {
-                          await adicionarTarefa(tipoSelecionado);
-                          await carregarEventosCalendario();
-                          setModalVisible(false);
-                        }}
-                      >
-                        <Text style={{ color: '#ffffff' }}>
-                          Adicionar Evento
-                        </Text>
-                      </TouchableOpacity>
-        
-                    </View>
-                  </ScrollView>        
-                  </View>
-                
-                </View>
+        <View style={Estilos.modalOverlay}>
+          <View
+            style={[Estilos.cardModalEscolha, { backgroundColor: tema.modal }]}
+          >
+            <Text style={[Estilos.tituloModal, { color: tema.text }]}>
+              O que você deseja fazer?
+            </Text>
+
+            <TouchableOpacity
+              style={Estilos.botaoEscolha}
+              onPress={() => {
+                setModalEscolha(false);
+                setModalVisible(true);
+              }}
+            >
+              <Text style={Estilos.textoBotaoEscolha}>Adicionar Evento</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={Estilos.botaoEscolha}
+              onPress={() => {
+                setModalEscolha(false);
+                setModalListaTarefas(true);
+              }}
+            >
+              <Text style={Estilos.textoBotaoEscolha}>Detalhes da Tarefa</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={Estilos.botaoCancelarEscolha}
+              onPress={() => setModalEscolha(false)}
+            >
+              <Text style={{ color: "#fff" }}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
+      <Modal
+        visible={modalListaTarefas}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalListaTarefas(false)}
+      >
+        <View style={Estilos.modalOverlay}>
+          <View
+            style={[Estilos.cardModalEscolha, { backgroundColor: tema.modal }]}
+          >
+            <Text style={[Estilos.tituloModalLista, { color: tema.text }]}>
+              Escolha uma tarefa
+            </Text>
+
+            <ScrollView>
+              {tarefasDoDia.map((tarefa) => (
+                <TouchableOpacity
+                  key={tarefa.id}
+                  style={[
+                    Estilos.itemTarefa,
+                    {
+                      borderColor:
+                        tarefa.tipo === "Reunião" ? "#94C0DF" : "#88C688",
+                    },
+                  ]}
+                  onPress={() => {
+                    setTarefaSelecionada(tarefa);
+                    setModalListaTarefas(false);
+                    setModalDetalhes(true);
+                  }}
+                >
+                  <Text style={[Estilos.tituloTarefa, { color: tema.text }]}>
+                    {tarefa.title}
+                  </Text>
+
+                  <Text style={[Estilos.tipoTarefa, { color: tema.text }]}>
+                    {tarefa.tipo}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={Estilos.botaoCancelarEscolha}
+              onPress={() => setModalListaTarefas(false)}
+            >
+              <Text style={{ color: "#fff" }}>Voltar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={modalDetalhes}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalDetalhes(false)}
+      >
+        <View style={Estilos.modalOverlay}>
+          <View style={[Estilos.cardModal, { backgroundColor: tema.modal }]}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={[Estilos.tituloModal, { color: tema.text }]}>
+                Detalhes do Evento
+              </Text>
+
+              <Text style={{ color: tema.text }}>
+                <Text style={{ fontWeight: "bold" }}>Título</Text>{" "}
+                {tarefaSelecionada?.title}
+              </Text>
+
+              <Text style={{ color: tema.text }}>
+                <Text style={{ fontWeight: "bold" }}>Data</Text>{" "}
+                {tarefaSelecionada ? formatarData(tarefaSelecionada.data) : ""}
+              </Text>
+
+              <Text style={{ color: tema.text }}>
+                <Text style={{ fontWeight: "bold" }}>Disciplina</Text>{" "}
+                {tarefaSelecionada?.disciplina}
+              </Text>
+
+              <Text style={{ color: tema.text }}>
+                <Text style={{ fontWeight: "bold" }}>Professor</Text>{" "}
+                {tarefaSelecionada?.professor}
+              </Text>
+
+              <Text style={{ color: tema.text }}>
+                <Text style={{ fontWeight: "bold" }}>Tipo</Text>{" "}
+                {tarefaSelecionada?.tipo}
+              </Text>
+
+              <Text style={{ color: tema.text }}>
+                <Text style={{ fontWeight: "bold" }}>Plataforma</Text>{" "}
+                {tarefaSelecionada?.plataforma}
+              </Text>
+
+              <Text style={{ color: tema.text }}>
+                <Text style={{ fontWeight: "bold" }}>Descrição</Text>{" "}
+                {tarefaSelecionada?.descricao}
+              </Text>
+
+              <TouchableOpacity
+                style={Estilos.botaoConfirmarDetalhes}
+                onPress={() => setModalDetalhes(false)}
+              >
+                <Text style={{ color: "#fff" }}>Fechar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={Estilos.deleteButton}
+                onPress={async () => {
+                  if (tarefaSelecionada) {
+                    await removerTarefa(tarefaSelecionada.id);
+
+                    setModalDetalhes(false);
+                    setTarefaSelecionada(null);
+
+                    await carregarEventosCalendario();
+                  }
+                }}
+              >
+                <Feather name="trash-2" size={20} color="#ff3b30" />
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={Estilos.modalOverlay}>
+          <View style={[Estilos.cardModal, { backgroundColor: tema.modal }]}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={[Estilos.tituloModal, { color: tema.text }]}>
+                Novo Evento
+              </Text>
+
+              <Text style={[Estilos.tipoTexto, { color: tema.text }]}>
+                Tipo
+              </Text>
+
+              <View style={Estilos.opcoesRow}>
+                {/* Opção Tarefa */}
+                <TouchableOpacity
+                  style={Estilos.opcaoContainer}
+                  onPress={() => setTipoSelecionado("Tarefa")}
+                >
+                  <View style={Estilos.radioExterno}>
+                    {tipoSelecionado === "Tarefa" && (
+                      <View style={Estilos.radioInterno} />
+                    )}
+                  </View>
+
+                  <Text style={[Estilos.textoOpcao, { color: tema.text }]}>
+                    Tarefa
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Opção Reunião */}
+                <TouchableOpacity
+                  style={Estilos.opcaoContainer}
+                  onPress={() => setTipoSelecionado("Reunião")}
+                >
+                  <View style={Estilos.radioExterno}>
+                    {tipoSelecionado === "Reunião" && (
+                      <View style={Estilos.radioInterno} />
+                    )}
+                  </View>
+
+                  <Text style={[Estilos.textoOpcao, { color: tema.text }]}>
+                    Reunião
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/*Colocar Textos*/}
+              <View style={Estilos.infoTarefa}>
+                <Text style={[Estilos.titulosInfoTarefa, { color: tema.text }]}>
+                  Título
+                </Text>
+                <TextInput
+                  style={Estilos.textosInfo}
+                  placeholder="Nome do evento"
+                  value={titulo}
+                  onChangeText={setTitulo}
+                ></TextInput>
+
+                <Text style={[Estilos.titulosInfoTarefa, { color: tema.text }]}>
+                  Data Selecionada
+                </Text>
+                <TextInput
+                  style={Estilos.textosInfo}
+                  value={formatarData(data)}
+                  editable={false}
+                ></TextInput>
+
+                <Text style={[Estilos.titulosInfoTarefa, { color: tema.text }]}>
+                  Disciplina
+                </Text>
+                <TextInput
+                  style={Estilos.textosInfo}
+                  placeholder="Ex: Matemática"
+                  value={disciplina}
+                  onChangeText={setDisciplina}
+                ></TextInput>
+
+                <Text style={[Estilos.titulosInfoTarefa, { color: tema.text }]}>
+                  Professor
+                </Text>
+                <TextInput
+                  style={Estilos.textosInfo}
+                  placeholder="Nome do professor"
+                  value={professor}
+                  onChangeText={setProfessor}
+                ></TextInput>
+
+                <Text style={[Estilos.titulosInfoTarefa, { color: tema.text }]}>
+                  Plataforma de Realização
+                </Text>
+                <TextInput
+                  style={Estilos.textosInfo}
+                  placeholder="Ex: Google Classroom, Moodle"
+                  value={plataforma}
+                  onChangeText={setPlataforma}
+                ></TextInput>
+
+                <Text style={[Estilos.titulosInfoTarefa, { color: tema.text }]}>
+                  Descrição
+                </Text>
+                <TextInput
+                  style={Estilos.textosInfo}
+                  placeholder="Detalhes do evento"
+                  value={descricao}
+                  onChangeText={setDescricao}
+                ></TextInput>
+              </View>
+
+              {/* Botões */}
+              <View style={Estilos.botoesModal}>
+                <TouchableOpacity
+                  style={Estilos.botaoCancelar}
+                  onPress={() => {
+                    setModalVisible(false);
+                    setTipoSelecionado("");
+                  }}
+                >
+                  <Text style={{ color: "#fff" }}>Cancelar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={Estilos.botaoConfirmar}
+                  onPress={async () => {
+                    const sucesso = await adicionarTarefa(tipoSelecionado);
+
+                    if (sucesso) {
+                      setModalVisible(false);
+                    }
+                  }}
+                >
+                  <Text style={{ color: "#ffffff" }}>Adicionar Evento</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
-    
-
-
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFDD0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-
-  calendarContainer: {
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    marginTop: 2,
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-  },
-
-  calendar: {
-    borderRadius: 24,
-    width: 350,
-    padding: 15,
-  },
-
-  titulo: {
-    paddingBottom: 50,
-    fontSize: 50,
-    
-  },
-
-  legenda: {
-    fontSize: 15,
-  },
-
-  legendaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  quadrado: {
-    width: 14,
-    height: 14,
-    borderRadius: 4,
-  },
-
-  legendaContainer: {
-    flexDirection: "row",
-    gap: 40,
-  },
-
-  buttons: {
-    marginTop: 20,
-    gap: 10,
-  },
-
-  modalOverlay: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.5)',
-  justifyContent: 'center',
-  alignItems: 'center',
-  },
-
-  scrollModal: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  cardModal: {
-    width: '85%',
-    maxHeight: '85%',
-    backgroundColor: '#ffffff',
-    borderRadius: 15,
-    padding: 20,
-  },
-
-  tituloModal: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-
-  opcaoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 20,
-    },
-
-  opcoesRow: {
-    flexDirection: 'row',
-    marginBottom: 15,
-  },
-
-  tipoTexto: {
-    paddingBottom: 15
-  },
-
-  radioExterno: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#4B6CB7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-
-  radioInterno: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#4B6CB7',
-  },
-
-  textoOpcao: {
-    fontSize: 16,
-  },
-
-  botoesModal: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-
-  botaoCancelar: {
-    backgroundColor: '#FFAA56',
-    padding: 12,
-    borderRadius: 10,
-    width: '45%',
-    alignItems: 'center',
-  },
-
-  botaoConfirmar: {
-    backgroundColor: '#94C0DF',
-    padding: 12,
-    borderRadius: 10,
-    width: '50%',
-    alignItems: 'center',
-  },
-
-  infoTarefa: {
-    gap: 10,
-  },
-
-  textosInfo: {
-    borderWidth: 1,
-    borderColor: "#dbdbdb",
-    borderRadius: 10,
-
-  },
-
-  titulosInfoTarefa: {
-    marginTop: 20,
-  },
-
-  modalDate: {
-  fontSize: 18,
-  marginBottom: 20,
-  },
-
-});
