@@ -25,58 +25,70 @@ export default function TelaCalendario() {
   const [descricao, setDescricao] = useState('');
 
   const adicionarTarefa = async (tipo: string) => {
-  // Verifica se todos os campos foram preenchidos
-  if (
-    !titulo.trim() ||
-    !data.trim() ||
-    !disciplina.trim() ||
-    !professor.trim() ||
-    !tipo.trim() ||
-    !plataforma.trim() ||
-    !descricao.trim()
-  ) {
-    Alert.alert(
-      "Campos obrigatórios",
-      "Preencha todos os campos para adicionar o evento."
-    );
-    return;
-  }
+    // Verifica se todos os campos foram preenchidos
+    if (
+      !titulo.trim() ||
+      !data.trim() ||
+      !disciplina.trim() ||
+      !professor.trim() ||
+      !tipo.trim() ||
+      !plataforma.trim() ||
+      !descricao.trim()
+    ) {
+      Alert.alert(
+        "Campos obrigatórios",
+        "Preencha todos os campos para adicionar o evento.",
+      );
+      return;
+    }
 
-  const novaTarefa = {
-    id: Date.now().toString(),
-    title: titulo.trim(),
-    data,
-    disciplina: disciplina.trim(),
-    professor: professor.trim(),
-    tipo,
-    plataforma: plataforma.trim(),
-    descricao: descricao.trim(),
-    completed: false,
-  };
+    // Data de hoje no formato AAAA-MM-DD
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, "0");
+    const dia = String(hoje.getDate()).padStart(2, "0");
 
-  const json = await AsyncStorage.getItem('tarefas');
+    const dataHoje = `${ano}-${mes}-${dia}`;
 
-  const tarefasExistentes = json
-    ? JSON.parse(json)
-    : [];
+    // Impede criar evento em data passada
+    if (data < dataHoje) {
+      Alert.alert(
+        "Data inválida",
+        "Não é possível criar um evento em uma data que já passou.",
+      );
+      return;
+    }
 
-  tarefasExistentes.push(novaTarefa);
+    const novaTarefa = {
+      id: Date.now().toString(),
+      title: titulo.trim(),
+      data,
+      disciplina: disciplina.trim(),
+      professor: professor.trim(),
+      tipo,
+      plataforma: plataforma.trim(),
+      descricao: descricao.trim(),
+      completed: false,
+    };
 
-  await AsyncStorage.setItem(
-    'tarefas',
-    JSON.stringify(tarefasExistentes)
-  );
+    const json = await AsyncStorage.getItem("tarefas");
 
-  await carregarEventosCalendario();
+    const tarefasExistentes = json ? JSON.parse(json) : [];
 
-  setTitulo("");
-  setDisciplina("");
-  setProfessor("");
-  setPlataforma("");
-  setDescricao("");
-  setTipoSelecionado("");
+    tarefasExistentes.push(novaTarefa);
 
-  return true;
+    await AsyncStorage.setItem("tarefas", JSON.stringify(tarefasExistentes));
+
+    await carregarEventosCalendario();
+
+    setTitulo("");
+    setDisciplina("");
+    setProfessor("");
+    setPlataforma("");
+    setDescricao("");
+    setTipoSelecionado("");
+
+    return true;
   };
 
   //selecionar dia 

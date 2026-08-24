@@ -43,6 +43,26 @@ export default function ListaTarefas() {
   //modal quando clica no card
   const [modalDetalhes, setModalDetalhes] = useState(false);
   const [tarefaSelecionada, setTarefaSelecionada] = useState<Task | null>(null);
+
+  const validarData = (data: string) => {
+    const partes = data.split("-");
+
+    if (partes.length !== 3) {
+      return false;
+    }
+
+    const ano = Number(partes[0]);
+    const mes = Number(partes[1]);
+    const dia = Number(partes[2]);
+
+    const dataTeste = new Date(ano, mes - 1, dia);
+
+    return (
+      dataTeste.getFullYear() === ano &&
+      dataTeste.getMonth() === mes - 1 &&
+      dataTeste.getDate() === dia
+    );
+  };
  
   // Adicionar uma nova tarefa
   const adicionarTarefa = async () => {
@@ -63,6 +83,33 @@ export default function ListaTarefas() {
       return false;
     }
 
+    if (!validarData(dataInterna)) {
+      Alert.alert(
+        "Data inválida",
+        "Digite uma data válida no formato dd/mm/aaaa.",
+      );
+
+      return false;
+    }
+
+    // Data de hoje
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    // Data informada pelo usuário
+    const dataEvento = converterData(dataInterna);
+    dataEvento.setHours(0, 0, 0, 0);
+
+    // Impede data passada
+    if (dataEvento < hoje) {
+      Alert.alert(
+        "Data inválida",
+        "Não é possível criar um evento em uma data que já passou.",
+      );
+
+      return false;
+    }
+
     const novaTarefa: Task = {
       id: Date.now().toString(),
       title: titulo.trim(),
@@ -75,32 +122,27 @@ export default function ListaTarefas() {
       completed: false,
     };
 
-    const json = await AsyncStorage.getItem('tarefas');
-    const tarefasExistentes = json
-      ? JSON.parse(json)
-      : [];
+    const json = await AsyncStorage.getItem("tarefas");
+    const tarefasExistentes = json ? JSON.parse(json) : [];
 
     tarefasExistentes.push(novaTarefa);
 
-    await AsyncStorage.setItem(
-      'tarefas',
-      JSON.stringify(tarefasExistentes)
-    );
+    await AsyncStorage.setItem("tarefas", JSON.stringify(tarefasExistentes));
 
     setTarefas([...tarefas, novaTarefa]);
 
-    setTitulo('');
-    setData('');
-    setDisciplina('');
-    setProfessor('');
-    setPlataforma('');
-    setDescricao('');
-    setTipoSelecionado('');
+    setTitulo("");
+    setData("");
+    setDisciplina("");
+    setProfessor("");
+    setPlataforma("");
+    setDescricao("");
+    setTipoSelecionado("");
 
     console.log("Tarefa adicionada");
 
     return true;
-  };
+  };;
   
   const getCorTipo = (tipo: string) => {
     switch (tipo) {
